@@ -1,0 +1,60 @@
+name: Trigger auto deployment for container-app-dotnet-from-github
+
+# When this action will be executed
+on:
+  # Automatically trigger it when detected changes in repo
+  push:
+    branches: 
+      [ master ]
+    paths:
+    - '**'
+    - '.github/workflows/container-app-dotnet-from-github-AutoDeployTrigger-585cee9d-752f-478d-bb0c-237445009ccc.yml'
+
+  # Allow mannually trigger 
+  workflow_dispatch:      
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout to the branch
+        uses: actions/checkout@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+
+      - name: Log in to container registry
+        uses: docker/login-action@v1
+        with:
+          registry: anvistavkinacr01.azurecr.io
+          username: ${{ secrets.CONTAINERAPPDOTNETFROMGITHUB_REGISTRY_USERNAME }}
+          password: ${{ secrets.CONTAINERAPPDOTNETFROMGITHUB_REGISTRY_PASSWORD }}
+
+      - name: Build and push container image to registry
+        uses: docker/build-push-action@v2
+        with:
+          push: true
+          tags: anvistavkinacr01.azurecr.io/container-app-dotnet-from-github:${{ github.sha }}
+          file: ./Dockerfile
+          context: ./
+
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    
+    steps:
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.CONTAINERAPPDOTNETFROMGITHUB_AZURE_CREDENTIALS }}
+
+
+      - name: Deploy to containerapp
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            az config set extension.use_dynamic_install=yes_without_prompt
+            az containerapp registry set -n container-app-dotnet-from-github -g RG5-Containers --server anvistavkinacr01.azurecr.io --username  ${{ secrets.CONTAINERAPPDOTNETFROMGITHUB_REGISTRY_USERNAME }} --password ${{ secrets.CONTAINERAPPDOTNETFROMGITHUB_REGISTRY_PASSWORD }}
+            az containerapp update -n container-app-dotnet-from-github -g RG5-Containers --image anvistavkinacr01.azurecr.io/container-app-dotnet-from-github:${{ github.sha }}
